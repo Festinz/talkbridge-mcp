@@ -119,10 +119,10 @@ export function createTalkBridgeMcpServer() {
     "prepare_message_to_send",
     {
       title: "보낼 메시지 교정·번역",
-      description: `${SERVICE_NAME} corrects a user's Korean draft and translates any free-form message into the conversation partner's requested language.`,
+      description: `${SERVICE_NAME} corrects a user's draft and translates it into the conversation partner's language. If the draft or language is missing, it asks for the missing detail without failing.`,
       inputSchema: {
-        text: z.string().min(1).max(2000).describe("Draft message the user wants to send."),
-        partnerLanguage: partnerLanguageSchema,
+        text: z.string().trim().max(2000).optional().describe("Draft message the user wants to send. Omit it when the user has not provided the actual reply yet."),
+        partnerLanguage: z.string().trim().max(32).optional().describe("Conversation partner language. Omit it when the user has not specified the language yet."),
         myLanguage: languageSchema.default("ko"),
         tone: toneSchema.optional().default("neutral"),
         provider: providerSchema.optional().default("rules")
@@ -130,10 +130,35 @@ export function createTalkBridgeMcpServer() {
       annotations: { title: "보낼 메시지 교정·번역", ...annotations }
     },
     async ({ text, partnerLanguage, myLanguage, tone, provider }) => {
-      const response = await translateMyMessage(text, {
+      const draft = text?.trim() ?? "";
+      const normalizedPartnerLanguage = normalizeLanguage(partnerLanguage);
+      const missingFields = [
+        ...(!draft ? ["text"] : []),
+        ...(["auto", "unknown"].includes(normalizedPartnerLanguage) ? ["partnerLanguage"] : [])
+      ];
+
+      if (missingFields.length > 0) {
+        const prompt = missingFields.length === 1 && missingFields[0] === "text"
+          ? `상대 언어는 ${languageLabel(normalizedPartnerLanguage)}로 확인했습니다. 다듬고 번역할 답장 내용을 입력해 주세요.`
+          : missingFields.length === 1
+            ? "답장을 보낼 상대방의 언어를 알려주세요. 예: 영어, 일본어, 스페인어"
+            : "상대방의 언어와 다듬고 번역할 답장 내용을 함께 알려주세요.";
+        return toolResult(
+          {
+            needsInput: true,
+            missingFields,
+            partnerLanguage: normalizedPartnerLanguage,
+            prompt,
+            externalApi: false
+          },
+          `**추가 정보가 필요합니다**\n${prompt}\n\n예: 상대는 영어야. \"내일 저녁 7시에 만나자\"를 다듬어 번역해줘.`
+        );
+      }
+
+      const response = await translateMyMessage(draft, {
         conversationId: "stateless",
         myLanguage: normalizeLanguage(myLanguage, "ko"),
-        partnerLanguage: normalizeLanguage(partnerLanguage),
+        partnerLanguage: normalizedPartnerLanguage,
         tone,
         provider
       });

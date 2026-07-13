@@ -90,6 +90,33 @@ describe("MCP tools", () => {
     await client.close();
   });
 
+  it("asks for a missing draft without returning an MCP error", async () => {
+    const client = await connectClient();
+    const result = await client.callTool({
+      name: "prepare_message_to_send",
+      arguments: {
+        partnerLanguage: "en",
+        myLanguage: "ko"
+      }
+    });
+
+    const payload = result.structuredContent as {
+      needsInput: boolean;
+      missingFields: string[];
+      partnerLanguage: string;
+      prompt: string;
+    };
+    expect(result.isError).not.toBe(true);
+    expect(result.content).toHaveLength(1);
+    expect(payload).toMatchObject({
+      needsInput: true,
+      missingFields: ["text"],
+      partnerLanguage: "en"
+    });
+    expect(payload.prompt).toContain("답장 내용을 입력");
+    await client.close();
+  });
+
   it("bridges an incoming message and an outgoing corrected draft", async () => {
     const client = await connectClient();
     const result = await client.callTool({
