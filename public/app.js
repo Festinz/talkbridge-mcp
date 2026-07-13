@@ -22,6 +22,7 @@ const modeButtons = Array.from(document.querySelectorAll("[data-mode].mode-butto
 let currentMode = "incoming";
 let previewTimer;
 let imageObjectUrl;
+let detectedPartnerLanguage = "ja";
 const conversationId = "demo";
 
 const languageLabels = {
@@ -29,24 +30,92 @@ const languageLabels = {
   ja: "일본어",
   en: "영어",
   zh: "중국어",
-  es: "스페인어"
+  es: "스페인어",
+  fr: "프랑스어",
+  de: "독일어",
+  pt: "포르투갈어",
+  it: "이탈리아어",
+  ru: "러시아어",
+  ar: "아랍어",
+  hi: "힌디어",
+  vi: "베트남어",
+  th: "태국어",
+  id: "인도네시아어",
+  tr: "튀르키예어",
+  uk: "우크라이나어"
 };
 
 languageLabels.ko = "한국어";
 
+const incomingSamples = {
+  ja: "明日、何時に会える？",
+  en: "What time can we meet tomorrow?",
+  zh: "我们明天几点见面？",
+  es: "¿A qué hora podemos vernos mañana?",
+  fr: "À quelle heure pouvons-nous nous voir demain ?",
+  de: "Um wie viel Uhr können wir uns morgen treffen?",
+  pt: "A que horas podemos nos encontrar amanhã?",
+  it: "A che ora possiamo vederci domani?",
+  ru: "Во сколько мы можем встретиться завтра?",
+  ar: "في أي وقت يمكننا أن نلتقي غدًا؟",
+  hi: "हम कल कितने बजे मिल सकते हैं?",
+  vi: "Ngày mai chúng ta có thể gặp nhau lúc mấy giờ?",
+  th: "พรุ่งนี้เราเจอกันกี่โมงดี?",
+  id: "Besok kita bisa bertemu jam berapa?",
+  tr: "Yarın saat kaçta buluşabiliriz?",
+  uk: "О котрій годині ми можемо зустрітися завтра?"
+};
+
+function activePartnerLanguage() {
+  return partnerLanguageSelect.value === "auto"
+    ? detectedPartnerLanguage
+    : partnerLanguageSelect.value;
+}
+
+async function loadSupportedLanguages() {
+  try {
+    const response = await fetch("/api/demo/languages");
+    if (!response.ok) return;
+    const payload = await response.json();
+    for (const language of payload.languages ?? []) {
+      languageLabels[language.code] = language.label;
+      if (!Array.from(partnerLanguageSelect.options).some((option) => option.value === language.code)) {
+        partnerLanguageSelect.add(new Option(language.label, language.code));
+      }
+    }
+  } catch {
+    // The core options in the HTML remain available when the catalog endpoint is offline.
+  }
+}
+
 function updateQuickLanguageLabels(language) {
-  const label = language === "auto" ? "상대 언어" : languageLabels[language] || "상대 언어";
+  const activeLanguage = language === "auto" ? detectedPartnerLanguage : language;
+  const label = languageLabels[activeLanguage] || activeLanguage?.toUpperCase() || "상대 언어";
   quickIncomingButton.textContent = `${label} 받기`;
   quickOutgoingButton.textContent = `${languageLabels.ko} 보내기`;
-  quickAppointmentButton.textContent = `${label} 약속 번역`;
+  quickAppointmentButton.textContent = `${label}로 보내기`;
+  if (incomingSamples[activeLanguage]) {
+    quickIncomingButton.dataset.prompt = incomingSamples[activeLanguage];
+  }
   previewLanguage.textContent = label;
 }
 
 function syncDetectedPartner(payload) {
-  const detected = payload?.detectedPartnerLanguage || (payload?.messages ? payload.partnerLanguage : undefined);
-  const isPartnerLanguage = ["ja", "en", "zh", "es"].includes(detected);
-  if (partnerLanguageSelect.value === "auto" && isPartnerLanguage) {
-    partnerLanguageSelect.value = detected;
+  const detected = payload?.detectedPartnerLanguage
+    || payload?.incoming?.translation?.sourceLanguage
+    || (payload?.messages ? payload.partnerLanguage : undefined);
+  if (detected && !["auto", "unknown"].includes(detected)) {
+    detectedPartnerLanguage = detected;
+    const detectedLabel = payload?.incoming?.translation?.sourceLabel
+      || payload?.partnerLanguageLabel
+      || languageLabels[detected]
+      || detected.toUpperCase();
+    languageLabels[detected] = detectedLabel;
+    if (!Array.from(partnerLanguageSelect.options).some((option) => option.value === detected)) {
+      partnerLanguageSelect.add(new Option(detectedLabel, detected));
+    }
+    const autoOption = Array.from(partnerLanguageSelect.options).find((option) => option.value === "auto");
+    if (autoOption) autoOption.textContent = `자동 감지 · ${detectedLabel}`;
   }
   updateQuickLanguageLabels(partnerLanguageSelect.value);
 }
@@ -96,6 +165,19 @@ function appendMessage(className, text) {
   article.append(paragraph);
   chat.append(article);
   chat.scrollTop = chat.scrollHeight;
+}
+
+function clearSampleConversation() {
+  chat.querySelectorAll(".sample-message, .sample-tool").forEach((node) => node.remove());
+}
+
+function focusLatestResult() {
+  const results = chat.querySelectorAll(".live-result");
+  const latest = results[results.length - 1];
+  if (!latest) return;
+  const chatTop = chat.getBoundingClientRect().top;
+  const resultTop = latest.getBoundingClientRect().top;
+  chat.scrollTop += resultTop - chatTop - 12;
 }
 
 function appendBridgeMessage(payload, request) {
@@ -209,6 +291,7 @@ function clearImageSelection() {
 
 async function runImageBridge(file) {
   if (!file || !file.type.startsWith("image/")) return;
+  clearSampleConversation();
   showImagePreview(file);
   imageStatus.textContent = "OCR 및 번역 중...";
   imageStatus.classList.add("is-loading");
@@ -218,7 +301,7 @@ async function runImageBridge(file) {
   form.append("image", file);
   form.append("conversationId", conversationId);
   form.append("myLanguage", "ko");
-  form.append("partnerLanguage", partnerLanguageSelect.value);
+  form.append("partnerLanguage", activePartnerLanguage());
   form.append("provider", providerSelect.value);
   form.append("tone", "polite");
   appendMessage("user-message", `대화 이미지: ${file.name}`);
@@ -229,9 +312,10 @@ async function runImageBridge(file) {
     appendImageBridgeResult(payload, {
       conversationId,
       myLanguage: "ko",
-      partnerLanguage: partnerLanguageSelect.value,
+      partnerLanguage: activePartnerLanguage(),
       provider: providerSelect.value
     });
+    focusLatestResult();
     imageStatus.textContent = `${payload.detectedMessages}개 메시지를 복원했습니다.`;
     imageStatus.classList.remove("is-loading");
   } catch (error) {
@@ -248,22 +332,24 @@ function answerFor(payload) {
   const lines = [];
   if (payload.incoming) {
     lines.push(`상대방 메시지를 ${payload.incoming.translation.targetLabel}로 번역했어요.\n\n${payload.incoming.displayedToUser}`);
+    if (payload.incoming.translation.fallback) {
+      lines.push("언어를 확정하지 못했거나 해당 로컬 모델을 준비하지 못했습니다. 원문 언어를 직접 지정해 다시 시도해 주세요.");
+    }
   }
   if (payload.outgoing) {
     const correction = payload.outgoing.correction;
     lines.push(`보내기 전 ${correction.changes.length}개를 다듬었어요.\n\n${correction.corrected}\n→ ${payload.outgoing.displayedToPartner}`);
     if (payload.outgoing.translation.fallback) {
-      lines.push("이 문장은 로컬 데모 사전에 없는 자유 문장이라 원문을 유지했습니다. 자유 번역은 로컬 번역 모델 연결 후 처리할 수 있어요.");
+      lines.push("언어를 확정하지 못했거나 해당 로컬 모델을 준비하지 못했습니다. 상대 언어를 직접 선택해 다시 시도해 주세요.");
     }
   }
   return lines.join("\n\n");
 }
 
 function requestBody(mode, text) {
-  const selected = partnerLanguageSelect.value;
   return {
     conversationId,
-    partnerLanguage: selected,
+    partnerLanguage: activePartnerLanguage(),
     myLanguage: "ko",
     provider: providerSelect.value,
     tone: "polite",
@@ -274,6 +360,7 @@ function requestBody(mode, text) {
 async function runMessage() {
   const text = promptInput.value.trim();
   if (!text) return;
+  clearSampleConversation();
   const request = requestBody(currentMode, text);
   appendMessage("user-message", text);
   sendButton.disabled = true;
@@ -288,6 +375,7 @@ async function runMessage() {
     if (!response.ok) throw new Error(payload.message || `HTTP ${response.status}`);
     appendBridgeMessage(payload, request);
     appendMessage("assistant-message", answerFor(payload));
+    focusLatestResult();
     promptInput.value = "";
   } catch (error) {
     appendMessage("assistant-message", `처리 중 오류가 났어요: ${error.message || error}`);
@@ -303,7 +391,7 @@ async function refreshLivePreview() {
     livePreview.hidden = true;
     return;
   }
-  previewLanguage.textContent = languageLabels[partnerLanguageSelect.value] || "상대 언어";
+  previewLanguage.textContent = languageLabels[activePartnerLanguage()] || "상대 언어";
   previewText.textContent = "번역 중…";
   previewMeta.textContent = "맞춤법 교정과 번역을 준비하고 있어요.";
   livePreview.hidden = false;
@@ -317,7 +405,7 @@ async function refreshLivePreview() {
     if (!response.ok || !payload.outgoing) throw new Error(payload.message || "미리보기를 만들 수 없습니다.");
     previewText.textContent = payload.outgoing.displayedToPartner;
     const corrected = payload.outgoing.correction.corrected;
-    const suffix = payload.outgoing.translation.fallback ? " · 로컬 사전에 없는 문장" : ` · ${payload.outgoing.translation.provider}`;
+    const suffix = payload.outgoing.translation.fallback ? " · 언어 또는 모델 확인 필요" : ` · ${payload.outgoing.translation.provider}`;
     previewMeta.textContent = `교정: ${corrected}${suffix}`;
   } catch {
     previewText.textContent = "미리보기를 만들 수 없어요.";
@@ -357,7 +445,7 @@ promptInput.addEventListener("input", () => {
 });
 partnerLanguageSelect.addEventListener("change", () => {
   updateQuickLanguageLabels(partnerLanguageSelect.value);
-  previewLanguage.textContent = languageLabels[partnerLanguageSelect.value] || "상대 언어";
+  previewLanguage.textContent = languageLabels[activePartnerLanguage()] || "상대 언어";
   if (currentMode === "outgoing") void refreshLivePreview();
 });
 providerSelect.addEventListener("change", updateProviderHint);
@@ -367,12 +455,13 @@ imageInput.addEventListener("change", () => {
 });
 clearImageButton.addEventListener("click", clearImageSelection);
 document.querySelector("#newChat").addEventListener("click", () => {
-  chat.querySelectorAll(".live-result, .tool-card:not(.sample-tool), .chat .assistant-message:not(.intro-message), .chat .user-message").forEach((node) => node.remove());
+  chat.querySelectorAll(".live-result, .tool-card, .sample-message, .assistant-message:not(.intro-message), .user-message").forEach((node) => node.remove());
   promptInput.value = "";
   clearImageSelection();
   setMode("incoming");
 });
 
 updateProviderHint();
+void loadSupportedLanguages();
 updateQuickLanguageLabels(partnerLanguageSelect.value);
 setMode("incoming");

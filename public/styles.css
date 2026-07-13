@@ -674,6 +674,12 @@ select:focus {
     border-radius: 0;
   }
 
+  .chat::after {
+    content: "";
+    display: block;
+    height: 56px;
+  }
+
   .note-panel {
     display: none;
   }
@@ -707,5 +713,9 @@ select:focus {
   .assistant-message,
   .user-message {
     max-width: 90%;
+  }
+
+  .assistant-message {
+    max-width: 96%;
   }
 }

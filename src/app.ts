@@ -21,7 +21,7 @@ import { createTalkBridgeMcpServer } from "./mcpServer.js";
 import { imageBridgeConfig, translateConversationImage } from "./imageBridgeService.js";
 import { createRateLimit } from "./rateLimit.js";
 import { LOCAL_PROVIDER } from "./ruleEngine.js";
-import { normalizeLanguage } from "./translation.js";
+import { languageLabel, normalizeLanguage, supportedLanguageCodes } from "./translation.js";
 import type { Audience, ProviderMode, Tone } from "./types.js";
 
 const publicDir = path.resolve(process.cwd(), "public");
@@ -142,6 +142,13 @@ export function createApp() {
 
   app.get("/api/demo/providers", (_req, res) => {
     res.json(providerCapabilities());
+  });
+
+  app.get("/api/demo/languages", (_req, res) => {
+    res.json({
+      languages: supportedLanguageCodes().map((code) => ({ code, label: languageLabel(code) })),
+      externalApi: false
+    });
   });
 
   app.post("/api/demo/set-partner-language", (req, res) => {

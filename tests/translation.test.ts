@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { TranslationService } from "../src/translation.js";
+import {
+  detectLanguage,
+  languageLabel,
+  normalizeLanguage,
+  TranslationService
+} from "../src/translation.js";
 
 describe("TranslationService", () => {
   it("matches CJK fixture text even when OCR inserts spaces", async () => {
@@ -30,5 +35,29 @@ describe("TranslationService", () => {
     expect(first.fallback).toBe(true);
     expect(second.fallback).toBe(true);
     expect(second.cached).toBe(false);
+  });
+
+  it("detects arbitrary Spanish chat instead of treating every Latin sentence as English", () => {
+    const result = detectLanguage("Hola, soy un hombre guapo de 29 años.");
+
+    expect(result.language).toBe("es");
+    expect(result.confidence).toBeGreaterThan(0.8);
+  });
+
+  it.each([
+    ["Bonjour, pouvons-nous nous retrouver après la réunion ?", "fr"],
+    ["Wir treffen uns morgen vor dem Bahnhof.", "de"],
+    ["Завтра я буду немного позже.", "ru"],
+    ["سأتصل بك بعد الاجتماع.", "ar"],
+    ["Tôi sẽ đến sau mười phút nữa.", "vi"]
+  ])("detects a broad free-form language sample", (text, expected) => {
+    expect(detectLanguage(text).language).toBe(expected);
+  });
+
+  it("normalizes language names and labels broad language codes", () => {
+    expect(normalizeLanguage("Spanish")).toBe("es");
+    expect(normalizeLanguage("프랑스어")).toBe("fr");
+    expect(normalizeLanguage("kor_Hang")).toBe("ko");
+    expect(languageLabel("vi")).toBe("베트남어");
   });
 });

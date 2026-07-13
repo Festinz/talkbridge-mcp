@@ -7,7 +7,7 @@ import {
   type ChatTranscriptResult
 } from "./bridgeService.js";
 import { correctChat } from "./correctionService.js";
-import { detectLanguage, LANGUAGE_LABELS, normalizeLanguage } from "./translation.js";
+import { detectLanguage, languageLabel, normalizeLanguage } from "./translation.js";
 import { TONES } from "./types.js";
 
 const SERVICE_NAME = "TalkBridge(톡브릿지)";
@@ -16,12 +16,18 @@ const providerSchema = z
   .enum(["rules", "local-gec", "hybrid"])
   .describe("Local correction engine. Use rules for the fastest response.");
 const languageSchema = z
-  .enum(["auto", "unknown", "ko", "ja", "en", "zh", "es"])
+  .string()
+  .trim()
+  .min(2)
+  .max(32)
   .default("auto")
-  .describe("Language code: auto, ko, ja, en, zh, or es.");
+  .describe("Language code or name. Use auto for detection; ISO codes such as ko, en, ja, es, fr, de, ar, hi, vi, or an NLLB language tag are accepted.");
 const partnerLanguageSchema = z
-  .enum(["ja", "en", "zh", "es"])
-  .describe("Partner language code: ja, en, zh, or es.");
+  .string()
+  .trim()
+  .min(2)
+  .max(32)
+  .describe("Conversation partner language as an ISO code or language name, for example ja, en, es, fr, de, ar, hi, or vi.");
 const transcriptMessageSchema = z.object({
   id: z.string().min(1).max(64).optional().describe("Optional stable message id."),
   side: z.enum(["incoming", "outgoing"]).describe("incoming is the partner on the left; outgoing is the user on the right."),
@@ -65,7 +71,7 @@ export function createTalkBridgeMcpServer() {
     "detect_chat_language",
     {
       title: "채팅 언어 자동 감지",
-      description: `${SERVICE_NAME} detects the language of a copied chat message before translation.`,
+      description: `${SERVICE_NAME} detects the language of any free-form copied chat message before translation.`,
       inputSchema: {
         text: z.string().min(1).max(2000).describe("Copied chat message to inspect.")
       },
@@ -75,7 +81,7 @@ export function createTalkBridgeMcpServer() {
       const detected = detectLanguage(text);
       const payload = {
         language: detected.language,
-        languageLabel: LANGUAGE_LABELS[detected.language],
+        languageLabel: languageLabel(detected.language),
         confidence: detected.confidence
       };
       return toolResult(payload, `감지 언어: **${payload.languageLabel} (${payload.language})**\n신뢰도: ${percent(payload.confidence)}`);
@@ -86,7 +92,7 @@ export function createTalkBridgeMcpServer() {
     "translate_received_message",
     {
       title: "받은 메시지 번역",
-      description: `${SERVICE_NAME} auto-detects a partner's copied message and translates it into the user's language.`,
+      description: `${SERVICE_NAME} auto-detects and translates any free-form partner message into the user's language with self-hosted local models.`,
       inputSchema: {
         text: z.string().min(1).max(2000).describe("Message copied from the conversation partner."),
         myLanguage: languageSchema.default("ko"),
@@ -113,7 +119,7 @@ export function createTalkBridgeMcpServer() {
     "prepare_message_to_send",
     {
       title: "보낼 메시지 교정·번역",
-      description: `${SERVICE_NAME} corrects a user's Korean draft and translates it into the conversation partner's selected language.`,
+      description: `${SERVICE_NAME} corrects a user's Korean draft and translates any free-form message into the conversation partner's requested language.`,
       inputSchema: {
         text: z.string().min(1).max(2000).describe("Draft message the user wants to send."),
         partnerLanguage: partnerLanguageSchema,

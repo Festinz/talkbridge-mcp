@@ -2,7 +2,7 @@ import { correctChat } from "./correctionService.js";
 import {
   getPartnerLanguage,
   isPartnerLanguage,
-  LANGUAGE_LABELS,
+  languageLabel,
   normalizeLanguage,
   setPartnerLanguage,
   TranslationService,
@@ -149,7 +149,7 @@ export async function translateChatTranscript(request: ChatTranscriptRequest): P
   return {
     myLanguage,
     partnerLanguage,
-    partnerLanguageLabel: LANGUAGE_LABELS[partnerLanguage],
+    partnerLanguageLabel: languageLabel(partnerLanguage),
     detectedPartnerLanguage,
     messages: messages.map(({ externalApi: _externalApi, ...message }) => message),
     externalApi: messages.some((message) => message.externalApi),
@@ -215,7 +215,7 @@ export async function bridgeChatTurn(request: BridgeTurnRequest): Promise<Bridge
     conversationId,
     myLanguage,
     partnerLanguage,
-    partnerLanguageLabel: LANGUAGE_LABELS[partnerLanguage],
+    partnerLanguageLabel: languageLabel(partnerLanguage),
     detectedPartnerLanguage,
     incoming,
     outgoing,
@@ -256,7 +256,7 @@ export async function translateMyMessage(
     targetLanguage: partnerLanguage,
     mode: "outgoing"
   });
-  return { conversationId, partnerLanguage, partnerLanguageLabel: LANGUAGE_LABELS[partnerLanguage], correction, result };
+  return { conversationId, partnerLanguage, partnerLanguageLabel: languageLabel(partnerLanguage), correction, result };
 }
 
 export function partnerLanguageState(conversationId: string, requested?: LanguageCode) {

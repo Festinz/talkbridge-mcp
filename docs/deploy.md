@@ -8,11 +8,11 @@
 flowchart LR
   A[PlayMCP] -->|Streamable HTTP| B[TalkBridge Node server]
   B --> C[Rule correction]
-  B --> D[Argos Python worker]
+  B --> D[NLLB Python worker]
   B --> E[Tesseract OCR demo route]
 ```
 
-프로덕션 `Dockerfile`은 Node 서버, Tesseract.js, Argos Translate Python 환경과 번역 모델을 하나의 이미지에 포함합니다. 별도 OpenAI 키, 유료 번역 API, 외부 데이터베이스가 필요하지 않습니다.
+프로덕션 `Dockerfile`은 Node 서버, Tesseract.js, NLLB-200 INT8 Python 환경을 하나의 이미지에 포함합니다. 별도 OpenAI 키, 유료 번역 API, 외부 데이터베이스가 필요하지 않습니다. 대용량 PyTorch 의존성을 끌어오는 Argos는 공개 이미지에서 제외하고 로컬 선택 옵션으로 유지합니다.
 
 ## PlayMCP in KC
 
@@ -24,11 +24,13 @@ flowchart LR
 6. `등록하기` 후 Status가 `Active`가 될 때까지 기다립니다.
 7. 상세 화면의 Endpoint URL을 복사합니다.
 
-이미지는 Argos 모델을 빌드 중 내려받으므로 첫 빌드가 수 분 이상 걸릴 수 있습니다.
+이미지는 약 600MB의 NLLB 모델을 빌드 중 내려받으므로 첫 빌드가 오래 걸릴 수 있습니다.
 
-서버 시작 시 영어·일본어 양방향 모델을 백그라운드에서 예열합니다. Windows 로컬 검증에서는 예열 후 fixture에 없는 영어→한국어가 58ms, 한국어→영어가 78ms에 처리됐습니다. 배포 환경에서는 공개 Endpoint에서 다시 측정합니다.
+서버 시작 시 NLLB 모델을 백그라운드에서 예열합니다. 단일 작업자 요청은 직렬 큐로 처리해 대화 캡처처럼 여러 문장이 동시에 들어와도 뒤쪽 요청의 timeout이 먼저 시작되지 않습니다. 배포 환경에서는 공개 Endpoint에서 다시 측정합니다.
 
-중국어와 스페인어도 임의 문장으로 `argos-local`, `externalApi: false`를 확인했습니다. 최초 모델 로딩은 로컬 CPU에서 약 6~9초가 걸렸고, 예열 후 새 문장은 중국어 279ms·스페인어 188ms였습니다. 첫 호출 지연을 줄이려면 운영 트래픽에 맞춰 예열 언어를 확장하되 컨테이너 메모리 사용량을 함께 확인합니다.
+스페인어 예문처럼 fixture에 없는 입력도 신경망 provider가 처리합니다. 83개 등록 언어는 `nllb-local`, 선택형 로컬 fallback은 `argos-local`로 반환되며 모두 `externalApi: false`입니다. Windows 로컬 CPU 검증에서는 NLLB 최초 로딩이 약 7.7초, 예열 후 대표 문장 번역은 약 0.4~0.8초였고 Python 작업자의 working set은 약 0.94GB였습니다. 공개 Endpoint에서는 다시 측정합니다.
+
+2026-07-13 Docker smoke test 기준 이미지 크기는 약 760MB, 예열 후 컨테이너 메모리는 약 751MiB였습니다. 스페인어 자유 문장 HTTP 번역은 약 1.07초였고 MCP `initialize`, `tools/list`, `tools/call`이 모두 통과했습니다.
 
 ## 공개 Endpoint 확인
 
@@ -44,8 +46,8 @@ MCP 확인 항목:
 - `detect_chat_language`가 로컬에서 즉시 응답하는지 확인
 - `bridge_chat_turn`이 받은 말과 답장을 한 응답에서 반환하는지 확인
 - `translate_chat_transcript`가 좌·우 side를 유지하는지 확인
-- 자유 문장 provider가 `argos-local`이고 `externalApi: false`인지 확인
-- 평균 응답 100ms 목표, p99 3,000ms 제한을 대표 입력으로 측정
+- 자유 문장 provider가 `nllb-local` 또는 `argos-local`이고 `externalApi: false`인지 확인
+- 대표 언어별 예열 전후 응답 시간을 측정
 
 ## Local Docker
 
@@ -60,7 +62,7 @@ docker run --rm -p 3010:3000 talkbridge-mcp
 CHATPOLISH_ARGOS_MODEL_PAIRS=en-ko,ko-en,en-ja,ja-en,en-zh,zh-en,en-es,es-en
 ```
 
-모델 목록 변경은 이미지 재빌드가 필요합니다. 기본 제출 언어는 한국어와 일본어·영어·중국어·스페인어입니다.
+NLLB 언어 카탈로그는 `workers/nllb_languages.json`에서 관리하며 현재 83개 언어 코드를 제공합니다. Argos는 프로덕션 이미지 외부의 선택형 로컬 fallback입니다.
 
 ## 운영 원칙
 

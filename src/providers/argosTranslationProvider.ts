@@ -1,129 +1,115 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import path from "node:path";
+import { SerializedJsonLineWorker } from "./serializedJsonLineWorker.js";
 
 export interface ArgosTranslationResult {
   translatedText: string;
   model: string;
 }
 
-interface PendingRequest {
-  resolve: (result: ArgosTranslationResult) => void;
-  reject: (error: Error) => void;
-  timer: NodeJS.Timeout;
+interface ArgosWorkerResponse {
+  id: number;
+  ok: boolean;
+  translatedText?: string;
+  model?: string;
+  error?: string;
 }
 
-let worker: ChildProcessWithoutNullStreams | undefined;
-let buffer = "";
-let nextId = 1;
-const pending = new Map<number, PendingRequest>();
+const DEFAULT_MODEL_PAIRS = [
+  "en-ko",
+  "ko-en",
+  "en-ja",
+  "ja-en",
+  "en-zh",
+  "zh-en",
+  "en-es",
+  "es-en"
+];
+
+let client: SerializedJsonLineWorker<ArgosWorkerResponse> | undefined;
 
 export function argosTranslationEnabled() {
   return process.env.CHATPOLISH_ARGOS_ENABLED === "1";
 }
 
-function timeoutMs() {
-  return Number(process.env.CHATPOLISH_ARGOS_TIMEOUT_MS ?? 2800);
-}
-
-function workerPath() {
-  return path.resolve(process.cwd(), "workers", "argos_translate_worker.py");
-}
-
-function pythonCommand() {
-  return process.env.CHATPOLISH_PYTHON ?? "python";
-}
-
-function shutdownWorker(error?: Error) {
-  for (const request of pending.values()) {
-    clearTimeout(request.timer);
-    request.reject(error ?? new Error("Argos translation worker stopped."));
+export function argosCanTranslate(source: string, target: string) {
+  if (source === target) return true;
+  const graph = new Map<string, Set<string>>();
+  for (const pair of configuredPairs()) {
+    const [from, to] = pair.split("-");
+    if (!from || !to) continue;
+    const destinations = graph.get(from) ?? new Set<string>();
+    destinations.add(to);
+    graph.set(from, destinations);
   }
-  pending.clear();
-  buffer = "";
-  if (worker && !worker.killed) worker.kill();
-  worker = undefined;
-}
 
-function ensureWorker() {
-  if (!argosTranslationEnabled()) throw new Error("Argos translation is disabled.");
-  if (worker && !worker.killed) return worker;
-
-  const child = spawn(pythonCommand(), [workerPath()], {
-    cwd: process.cwd(),
-    env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
-    stdio: ["pipe", "pipe", "pipe"]
-  });
-  child.stdout.setEncoding("utf8");
-  child.stderr.setEncoding("utf8");
-  child.stdout.on("data", (chunk: string) => {
-    buffer += chunk;
-    let newlineIndex = buffer.indexOf("\n");
-    while (newlineIndex >= 0) {
-      const line = buffer.slice(0, newlineIndex).trim();
-      buffer = buffer.slice(newlineIndex + 1);
-      newlineIndex = buffer.indexOf("\n");
-      if (!line) continue;
-      try {
-        const message = JSON.parse(line) as {
-          id: number;
-          ok: boolean;
-          translatedText?: string;
-          model?: string;
-          error?: string;
-        };
-        const request = pending.get(message.id);
-        if (!request) continue;
-        pending.delete(message.id);
-        clearTimeout(request.timer);
-        if (message.ok && typeof message.translatedText === "string") {
-          request.resolve({ translatedText: message.translatedText, model: message.model ?? "argos-translate" });
-        } else {
-          request.reject(new Error(message.error ?? "Argos translation failed."));
-        }
-      } catch (error) {
-        shutdownWorker(error instanceof Error ? error : new Error(String(error)));
-      }
+  const visited = new Set([source]);
+  const queue = [source];
+  while (queue.length) {
+    const current = queue.shift();
+    if (!current) break;
+    for (const destination of graph.get(current) ?? []) {
+      if (destination === target) return true;
+      if (visited.has(destination)) continue;
+      visited.add(destination);
+      queue.push(destination);
     }
-  });
-  child.stderr.on("data", (chunk: string) => {
-    if (process.env.CHATPOLISH_DEBUG === "1") console.error(`[argos] ${chunk.trim()}`);
-  });
-  child.on("error", (error) => shutdownWorker(error));
-  child.on("exit", (code, signal) => {
-    shutdownWorker(new Error(`Argos worker exited with code ${code ?? "none"} signal ${signal ?? "none"}.`));
-  });
-  worker = child;
-  return child;
+  }
+  return false;
 }
 
-export function translateWithArgos(text: string, source: string, target: string) {
-  const child = ensureWorker();
-  const id = nextId++;
-  return new Promise<ArgosTranslationResult>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      pending.delete(id);
-      reject(new Error(`Argos translation timed out after ${timeoutMs()}ms.`));
-    }, timeoutMs());
-    pending.set(id, { resolve, reject, timer });
-    child.stdin.write(`${JSON.stringify({ id, method: "translate", text, source, target })}\n`, "utf8", (error) => {
-      if (!error) return;
-      pending.delete(id);
-      clearTimeout(timer);
-      reject(error);
-    });
-  });
+export async function translateWithArgos(text: string, source: string, target: string) {
+  if (!argosTranslationEnabled()) throw new Error("Argos translation is disabled.");
+  if (!argosCanTranslate(source, target)) throw new Error(`Argos model route is unavailable: ${source}-${target}`);
+
+  const response = await getClient().request({ method: "translate", text, source, target });
+  if (typeof response.translatedText !== "string") throw new Error("Argos returned no translated text.");
+  return {
+    translatedText: response.translatedText,
+    model: response.model ?? "argos-translate"
+  } satisfies ArgosTranslationResult;
 }
 
 export function stopArgosTranslationWorker() {
-  shutdownWorker();
+  client?.stop();
+  client = undefined;
 }
 
 export async function prewarmArgosTranslationWorker() {
-  if (!argosTranslationEnabled()) return;
-  await Promise.allSettled([
-    translateWithArgos("Hello", "en", "ko"),
-    translateWithArgos("안녕하세요", "ko", "en"),
-    translateWithArgos("こんにちは", "ja", "ko"),
-    translateWithArgos("안녕하세요", "ko", "ja")
-  ]);
+  if (!argosTranslationEnabled() || process.env.CHATPOLISH_NLLB_ENABLED === "1") return;
+  const samples = [
+    ["Hello", "en", "ko"],
+    ["안녕하세요", "ko", "en"],
+    ["こんにちは", "ja", "ko"],
+    ["안녕하세요", "ko", "ja"],
+    ["Hola", "es", "ko"],
+    ["안녕하세요", "ko", "es"]
+  ] as const;
+
+  for (const [text, source, target] of samples) {
+    try {
+      await translateWithArgos(text, source, target);
+    } catch {
+      // Readiness remains available while optional language routes warm up.
+    }
+  }
+}
+
+function configuredPairs() {
+  return (process.env.CHATPOLISH_ARGOS_MODEL_PAIRS ?? DEFAULT_MODEL_PAIRS.join(","))
+    .split(",")
+    .map((pair) => pair.trim().toLowerCase())
+    .filter((pair) => /^[a-z]{2,3}-[a-z]{2,3}$/.test(pair));
+}
+
+function getClient() {
+  client ??= new SerializedJsonLineWorker<ArgosWorkerResponse>({
+    command: process.env.CHATPOLISH_PYTHON ?? "python",
+    args: [path.resolve(process.cwd(), "workers", "argos_translate_worker.py")],
+    cwd: process.cwd(),
+    env: { PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
+    timeoutMs: () => Number(process.env.CHATPOLISH_ARGOS_TIMEOUT_MS ?? 12000),
+    timeoutGraceMs: 30000,
+    debugLabel: "argos"
+  });
+  return client;
 }

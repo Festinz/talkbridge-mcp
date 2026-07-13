@@ -33,6 +33,14 @@ describe("HTTP API", () => {
     ]);
   });
 
+  it("lists broad local translation languages without an external API", async () => {
+    const response = await request(app).get("/api/demo/languages").expect(200);
+    const codes = response.body.languages.map((language: { code: string }) => language.code);
+
+    expect(codes).toEqual(expect.arrayContaining(["ko", "es", "fr", "de", "ar", "hi", "vi"]));
+    expect(response.body.externalApi).toBe(false);
+  });
+
   it("corrects text through demo endpoint", async () => {
     const response = await request(app)
       .post("/api/demo/correct")

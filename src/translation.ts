@@ -1,21 +1,32 @@
-import { argosTranslationEnabled, translateWithArgos } from "./providers/argosTranslationProvider.js";
+import { franc } from "franc-min";
+import {
+  CORE_PARTNER_LANGUAGES,
+  francCodeToLanguage,
+  isPartnerLanguage,
+  languageLabel,
+  normalizeLanguageCode,
+  supportedLanguageCodes,
+  type LanguageCode,
+  type PartnerLanguage
+} from "./languageCatalog.js";
+import {
+  argosCanTranslate,
+  argosTranslationEnabled,
+  translateWithArgos
+} from "./providers/argosTranslationProvider.js";
+import {
+  nllbCanTranslate,
+  nllbTranslationEnabled,
+  translateWithNllb
+} from "./providers/nllbTranslationProvider.js";
 
-export type LanguageCode = "auto" | "unknown" | "ko" | "ja" | "en" | "zh" | "es";
+export { isPartnerLanguage, LANGUAGE_LABELS, languageLabel, supportedLanguageCodes } from "./languageCatalog.js";
+export type { LanguageCode, PartnerLanguage } from "./languageCatalog.js";
+
 export type TranslationMode = "incoming" | "outgoing" | "live";
-export type TranslationProvider = "fixture" | "local" | "argos-local" | "libretranslate" | "fallback";
+export type TranslationProvider = "fixture" | "local" | "argos-local" | "nllb-local" | "libretranslate" | "fallback";
 
-export const LANGUAGE_LABELS: Record<LanguageCode, string> = {
-  auto: "자동 감지",
-  unknown: "알 수 없음",
-  ko: "한국어",
-  ja: "일본어",
-  en: "영어",
-  zh: "중국어",
-  es: "스페인어"
-};
-
-export const PARTNER_LANGUAGES = ["ja", "en", "zh", "es"] as const;
-export type PartnerLanguage = (typeof PARTNER_LANGUAGES)[number];
+export const PARTNER_LANGUAGES = CORE_PARTNER_LANGUAGES;
 
 export interface TranslationRequest {
   text: string;
@@ -84,28 +95,40 @@ const FIXTURES = new Map<string, string>([
   [key("Nos vemos frente a la estación.", "es", "ko"), "역 앞에서 만나자."]
 ]);
 
-const SPANISH_HINTS = /\b(hola|gracias|mañana|dónde|cuando|qué|cómo|amigo|nos vemos)\b/i;
-const ENGLISH_HINTS = /\b(hello|hi|thanks|tomorrow|where|when|what|how|friend|see you|let's)\b/i;
+const LANGUAGE_HINTS: Array<{ language: LanguageCode; pattern: RegExp }> = [
+  { language: "es", pattern: /\b(hola|gracias|mañana|dónde|cuando|qué|cómo|amigo|años|soy|nos vemos)\b|[ñ¿¡]/iu },
+  { language: "fr", pattern: /\b(bonjour|merci|demain|pourquoi|comment|avec|vous|je suis|rendez-vous)\b|[çœ]/iu },
+  { language: "de", pattern: /\b(hallo|danke|morgen|warum|wie|ich bin|bitte|treffen|tschüss)\b|[äöüß]/iu },
+  { language: "pt", pattern: /\b(olá|obrigad[oa]|amanhã|você|encontro|como|porque)\b|[ãõ]/iu },
+  { language: "it", pattern: /\b(ciao|grazie|domani|perché|come|sono|incontro|arrivederci)\b/iu },
+  { language: "vi", pattern: /\b(tôi|bạn|chúng|sẽ|đến|sau|phút|cảm ơn|ngày mai)\b|[ăâđêôơư]/iu },
+  { language: "uk", pattern: /(привіт|дякую|зустрінемося|після|будь ласка)|[іїєґ]/iu },
+  { language: "ru", pattern: /(привет|спасибо|завтра|буду|встреча|после|пожалуйста|немного|позже)/iu },
+  { language: "en", pattern: /\b(hello|hi|thanks|tomorrow|where|when|what|how|friend|see you|let's|i am)\b/iu }
+];
 
 export function normalizeLanguage(value: unknown, fallback: LanguageCode = "auto"): LanguageCode {
-  const normalized = String(value ?? fallback).toLowerCase();
-  return ["auto", "unknown", "ko", "ja", "en", "zh", "es"].includes(normalized)
-    ? (normalized as LanguageCode)
-    : fallback;
-}
-
-export function isPartnerLanguage(value: LanguageCode): value is PartnerLanguage {
-  return (PARTNER_LANGUAGES as readonly string[]).includes(value);
+  return normalizeLanguageCode(value, fallback);
 }
 
 export function detectLanguage(text: string): { language: LanguageCode; confidence: number } {
   const normalized = text.trim();
   if (!normalized) return { language: "unknown", confidence: 0 };
   if (/[가-힣]/u.test(normalized)) return { language: "ko", confidence: 0.99 };
-  if (SPANISH_HINTS.test(normalized) || /[áéíóúñ¿¡]/i.test(normalized)) return { language: "es", confidence: 0.92 };
-  if (ENGLISH_HINTS.test(normalized) || /[a-z]/i.test(normalized)) return { language: "en", confidence: 0.78 };
   if (/[ぁ-ゖァ-ヺ]/u.test(normalized)) return { language: "ja", confidence: 0.95 };
   if (/[一-鿿]/u.test(normalized)) return { language: "zh", confidence: 0.72 };
+  for (const hint of LANGUAGE_HINTS) {
+    if (hint.pattern.test(normalized)) return { language: hint.language, confidence: 0.92 };
+  }
+
+  const francCode = franc(normalized, { minLength: 3 });
+  const detected = francCodeToLanguage(francCode);
+  if (detected !== "unknown") {
+    return { language: detected, confidence: normalized.length >= 20 ? 0.84 : 0.66 };
+  }
+  if (/^[\x00-\x7F]+$/.test(normalized) && /[a-z]/i.test(normalized)) {
+    return { language: "en", confidence: 0.55 };
+  }
   return { language: "unknown", confidence: 0.2 };
 }
 
@@ -137,7 +160,10 @@ export class TranslationService {
     if (sourceLanguage !== "unknown" && targetLanguage !== "unknown" && sourceLanguage !== targetLanguage) {
       providerResult = fixtureTranslation(text, sourceLanguage, targetLanguage);
       if (!providerResult) providerResult = localTranslation(text, sourceLanguage, targetLanguage);
-      if (!providerResult && argosTranslationEnabled()) {
+      if (!providerResult && nllbTranslationEnabled() && nllbCanTranslate(sourceLanguage, targetLanguage)) {
+        providerResult = await nllbTranslation(text, sourceLanguage, targetLanguage);
+      }
+      if (!providerResult && argosTranslationEnabled() && argosCanTranslate(sourceLanguage, targetLanguage)) {
         providerResult = await argosTranslation(text, sourceLanguage, targetLanguage);
       }
       if (!providerResult) {
@@ -163,8 +189,8 @@ export class TranslationService {
       translatedText: finalProvider.translatedText,
       sourceLanguage,
       targetLanguage,
-      sourceLabel: LANGUAGE_LABELS[sourceLanguage],
-      targetLabel: LANGUAGE_LABELS[targetLanguage],
+      sourceLabel: languageLabel(sourceLanguage),
+      targetLabel: languageLabel(targetLanguage),
       provider: finalProvider.provider,
       externalApi: finalProvider.externalApi,
       selfHosted: finalProvider.selfHosted,
@@ -186,18 +212,40 @@ export class TranslationService {
 
   status() {
     return {
-      configured: argosTranslationEnabled() || Boolean(this.libreTranslateUrl),
+      configured: argosTranslationEnabled() || nllbTranslationEnabled() || Boolean(this.libreTranslateUrl),
       argosEnabled: argosTranslationEnabled(),
-      mode: argosTranslationEnabled() ? "argos-local" : this.libreTranslateUrl ? "libretranslate" : "local-fallback",
-      selfHosted: this.libreTranslateUrl ? isSelfHostedEndpoint(this.libreTranslateUrl) : true,
+      nllbEnabled: nllbTranslationEnabled(),
+      supportedLanguages: nllbTranslationEnabled() ? supportedLanguageCodes().length : 5,
+      mode: argosTranslationEnabled() && nllbTranslationEnabled()
+        ? "hybrid-local"
+        : nllbTranslationEnabled()
+          ? "nllb-local"
+          : argosTranslationEnabled()
+            ? "argos-local"
+            : this.libreTranslateUrl
+              ? "libretranslate"
+              : "local-fallback",
+      selfHosted: argosTranslationEnabled() || nllbTranslationEnabled()
+        ? true
+        : this.libreTranslateUrl
+          ? isSelfHostedEndpoint(this.libreTranslateUrl)
+          : true,
       timeoutMs: this.libreTranslateTimeoutMs
     } as const;
   }
 
   async readiness() {
     const started = Date.now();
-    if (argosTranslationEnabled()) {
-      return { ready: true, mode: "argos-local" as const, latencyMs: 0 };
+    if (argosTranslationEnabled() || nllbTranslationEnabled()) {
+      return {
+        ready: true,
+        mode: argosTranslationEnabled() && nllbTranslationEnabled()
+          ? "hybrid-local" as const
+          : nllbTranslationEnabled()
+            ? "nllb-local" as const
+            : "argos-local" as const,
+        latencyMs: 0
+      };
     }
 
     if (!this.libreTranslateUrl) {
@@ -234,6 +282,7 @@ async function argosTranslation(
 ): Promise<ProviderResult | null> {
   try {
     const result = await translateWithArgos(text, source, target);
+    if (!isUsefulTranslation(text, result.translatedText)) return null;
     return {
       translatedText: result.translatedText,
       provider: "argos-local",
@@ -244,6 +293,34 @@ async function argosTranslation(
   } catch {
     return null;
   }
+}
+
+async function nllbTranslation(
+  text: string,
+  source: LanguageCode,
+  target: LanguageCode
+): Promise<ProviderResult | null> {
+  try {
+    const result = await translateWithNllb(text, source, target);
+    if (!isUsefulTranslation(text, result.translatedText)) return null;
+    return {
+      translatedText: result.translatedText,
+      provider: "nllb-local",
+      externalApi: false,
+      selfHosted: true,
+      confidence: 0.84
+    };
+  } catch {
+    return null;
+  }
+}
+
+function isUsefulTranslation(original: string, translated: string) {
+  const normalizedOriginal = original.normalize("NFKC").trim().toLowerCase();
+  const normalizedTranslated = translated.normalize("NFKC").trim().toLowerCase();
+  if (!normalizedTranslated) return false;
+  if (normalizedOriginal !== normalizedTranslated) return true;
+  return !/[\p{L}\p{N}]/u.test(normalizedOriginal);
 }
 
 function key(text: string, source: LanguageCode, target: LanguageCode) {
@@ -344,11 +421,11 @@ const partnerMemory = new Map<string, PartnerLanguage>();
 export function setPartnerLanguage(conversationId: string, language: PartnerLanguage) {
   const id = conversationId.trim().slice(0, 64) || "default";
   partnerMemory.set(id, language);
-  return { conversationId: id, partnerLanguage: language, partnerLanguageLabel: LANGUAGE_LABELS[language] };
+  return { conversationId: id, partnerLanguage: language, partnerLanguageLabel: languageLabel(language) };
 }
 
 export function getPartnerLanguage(conversationId: string, fallback: PartnerLanguage = "ja") {
   const id = conversationId.trim().slice(0, 64) || "default";
   const partnerLanguage = partnerMemory.get(id) ?? fallback;
-  return { conversationId: id, partnerLanguage, partnerLanguageLabel: LANGUAGE_LABELS[partnerLanguage] };
+  return { conversationId: id, partnerLanguage, partnerLanguageLabel: languageLabel(partnerLanguage) };
 }
