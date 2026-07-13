@@ -47,7 +47,13 @@ def download_with_resume(package):
     for url in candidate_urls(package):
         for attempt in range(1, 6):
             existing = destination.stat().st_size if destination.exists() else 0
-            request = urllib.request.Request(url, headers={"Range": f"bytes={existing}-"} if existing else {})
+            headers = {
+                "User-Agent": "curl/8.0",
+                "Accept": "application/zip,application/octet-stream;q=0.9,*/*;q=0.8",
+            }
+            if existing:
+                headers["Range"] = f"bytes={existing}-"
+            request = urllib.request.Request(url, headers=headers)
             try:
                 with urllib.request.urlopen(request, timeout=90) as response:
                     append = existing > 0 and response.status == 206
