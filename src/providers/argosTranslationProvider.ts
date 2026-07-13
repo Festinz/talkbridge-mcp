@@ -50,7 +50,7 @@ function ensureWorker() {
 
   const child = spawn(pythonCommand(), [workerPath()], {
     cwd: process.cwd(),
-    env: process.env,
+    env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
     stdio: ["pipe", "pipe", "pipe"]
   });
   child.stdout.setEncoding("utf8");
@@ -116,4 +116,14 @@ export function translateWithArgos(text: string, source: string, target: string)
 
 export function stopArgosTranslationWorker() {
   shutdownWorker();
+}
+
+export async function prewarmArgosTranslationWorker() {
+  if (!argosTranslationEnabled()) return;
+  await Promise.allSettled([
+    translateWithArgos("Hello", "en", "ko"),
+    translateWithArgos("안녕하세요", "ko", "en"),
+    translateWithArgos("こんにちは", "ja", "ko"),
+    translateWithArgos("안녕하세요", "ko", "ja")
+  ]);
 }

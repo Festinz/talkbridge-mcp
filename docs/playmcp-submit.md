@@ -58,6 +58,9 @@ MCP 설명(500자 이내):
 - [x] 서버 및 tool 이름에 금지 문자열 없음
 - [x] 요청 길이 제한, rate limit, timeout 적용
 - [x] 원문·이미지 비저장 및 메타데이터 로그만 사용
+- [x] 임의 영어↔한국어 문장이 `argos-local`, `externalApi: false`로 처리됨
+- [x] 실제 대화 이미지에서 좌측 일본어·우측 한국어 말풍선 2개를 방향대로 복원
+- [x] 모델 예열 후 임의 번역 처리 시간 58~78ms 확인
 - [ ] 카카오클라우드 Endpoint에서 initialize, tools/list, tools/call 성공
 - [ ] PlayMCP `정보 불러오기` 성공
 - [ ] 임시 등록 후 도구함 AI 채팅 테스트
