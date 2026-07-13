@@ -173,11 +173,13 @@ export class TranslationService {
       fallback: finalProvider.provider === "fallback",
       latencyMs: Date.now() - started
     };
-    this.cache.set(cacheKey, result);
-    while (this.cache.size > this.maxCacheEntries) {
-      const oldest = this.cache.keys().next().value;
-      if (oldest) this.cache.delete(oldest);
-      else break;
+    if (!result.fallback) {
+      this.cache.set(cacheKey, result);
+      while (this.cache.size > this.maxCacheEntries) {
+        const oldest = this.cache.keys().next().value;
+        if (oldest) this.cache.delete(oldest);
+        else break;
+      }
     }
     return result;
   }

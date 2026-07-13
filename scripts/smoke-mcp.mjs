@@ -3,6 +3,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
 const endpoint = process.argv[2] ?? "http://127.0.0.1:3010/mcp";
+const sampleText = process.argv[3] ?? "Could you send me the updated schedule after lunch?";
 const client = new Client({ name: "talkbridge-smoke-client", version: "1.0.0" });
 const transport = new StreamableHTTPClientTransport(new URL(endpoint));
 
@@ -26,7 +27,7 @@ try {
   const translated = await client.callTool({
     name: "translate_received_message",
     arguments: {
-      text: "Could you send me the updated schedule after lunch?",
+      text: sampleText,
       myLanguage: "ko",
       sourceLanguage: "en"
     }
