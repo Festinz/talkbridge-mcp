@@ -1,0 +1,64 @@
+services:
+  talkbridge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: talkbridge-mcp:local
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOST: 0.0.0.0
+      MCP_BIND_HOST: 0.0.0.0
+      MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-localhost,127.0.0.1,talkbridge}
+      MCP_BEARER_TOKEN: ${MCP_BEARER_TOKEN:-}
+      CHATPOLISH_PROVIDER: ${CHATPOLISH_PROVIDER:-rules}
+      CHATPOLISH_GEC_MODEL: ${CHATPOLISH_GEC_MODEL:-Soyoung97/gec_kr}
+      CHATPOLISH_ARGOS_ENABLED: ${CHATPOLISH_ARGOS_ENABLED:-0}
+      CHATPOLISH_LIBRETRANSLATE_URL: http://libretranslate:5000
+      CHATPOLISH_LIBRETRANSLATE_TIMEOUT_MS: ${CHATPOLISH_LIBRETRANSLATE_TIMEOUT_MS:-3000}
+      CHATPOLISH_RATE_LIMIT_WINDOW_MS: ${CHATPOLISH_RATE_LIMIT_WINDOW_MS:-60000}
+      CHATPOLISH_RATE_LIMIT_MAX: ${CHATPOLISH_RATE_LIMIT_MAX:-120}
+      CHATPOLISH_OCR_LANGS: ${CHATPOLISH_OCR_LANGS:-eng,kor,jpn,chi_sim,spa}
+      CHATPOLISH_OCR_LANG_PATH: ${CHATPOLISH_OCR_LANG_PATH:-}
+      CHATPOLISH_OCR_CACHE_PATH: /app/.cache/tesseract
+      CHATPOLISH_OCR_TIMEOUT_MS: ${CHATPOLISH_OCR_TIMEOUT_MS:-120000}
+      CHATPOLISH_OCR_MAX_IMAGE_BYTES: ${CHATPOLISH_OCR_MAX_IMAGE_BYTES:-8388608}
+    volumes:
+      - tesseract-cache:/app/.cache/tesseract
+    ports:
+      - "${CHATPOLISH_PORT:-3000}:3000"
+    depends_on:
+      libretranslate:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      retries: 5
+
+  libretranslate:
+    image: ${LIBRETRANSLATE_IMAGE:-libretranslate/libretranslate:latest}
+    restart: unless-stopped
+    environment:
+      LT_HOST: 0.0.0.0
+      LT_PORT: 5000
+      LT_LOAD_ONLY: en,es,ja,ko,zh
+      LT_REQ_LIMIT: 120
+      LT_THREADS: 2
+      LT_DISABLE_WEB_UI: "true"
+    expose:
+      - "5000"
+    volumes:
+      - libretranslate-models:/home/libretranslate/.local:rw
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=5)\""]
+      interval: 15s
+      timeout: 10s
+      start_period: 180s
+      retries: 20
+
+volumes:
+  libretranslate-models:
+  tesseract-cache:

@@ -1,0 +1,8 @@
+services:
+  talkbridge:
+    build:
+      context: .
+      dockerfile: Dockerfile.local-gec
+    image: talkbridge-mcp:local-gec
+    environment:
+      CHATPOLISH_PROVIDER: hybrid

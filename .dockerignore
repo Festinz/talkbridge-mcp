@@ -1,0 +1,12 @@
+node_modules
+dist
+coverage
+artifacts
+.ocr-cache*
+.cache
+.venv
+*.traineddata
+.git
+.env
+.env.*
+*.log

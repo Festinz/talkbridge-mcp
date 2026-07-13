@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TalkBridge Demo</title>
+    <link rel="icon" href="/talkbridge-mark.svg" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <section class="phone" aria-label="TalkBridge 양방향 번역 데모">
+        <header class="topbar">
+          <button class="icon-button" type="button" aria-label="닫기">×</button>
+          <div class="title">
+            <strong>AI 채팅</strong>
+            <span>TalkBridge</span>
+          </div>
+          <button id="newChat" class="new-chat" type="button">+ 새 채팅</button>
+        </header>
+
+        <section class="conversation-settings" aria-label="대화 설정">
+          <label for="partnerLanguage">상대 언어</label>
+          <select id="partnerLanguage">
+            <option value="auto">자동 감지</option>
+            <option value="ja">일본어</option>
+            <option value="en">영어</option>
+            <option value="zh">중국어</option>
+            <option value="es">스페인어</option>
+          </select>
+          <span class="setting-arrow">›</span>
+          <span class="my-language">내 언어 · 한국어</span>
+        </section>
+
+        <section id="chat" class="chat" aria-live="polite">
+          <article class="assistant-message intro-message">
+            <p>상대의 말은 내 언어로, 내 답장은 교정한 뒤 상대 언어로 보여드려요.</p>
+          </article>
+
+          <article class="incoming-bubble">
+            <div class="message-meta"><span>さくら</span><time>11:24</time></div>
+            <div class="message-box">
+              <strong>明日、何時に会える？</strong>
+              <div class="translation-line">내일 몇 시에 만날 수 있어?</div>
+              <small>일본어 감지 · 한국어 번역</small>
+            </div>
+          </article>
+
+          <article class="outgoing-bubble">
+            <div class="message-box">
+              <strong>저녁 7시에 어때?</strong>
+              <div class="translation-line">→ 19時はどう？</div>
+              <small>맞춤법 교정 후 일본어로 전송</small>
+            </div>
+            <time>11:26 ✓✓</time>
+          </article>
+
+          <article class="tool-card sample-tool">
+            <header>
+              <span>TOOL 호출</span>
+              <button class="collapse" type="button" aria-label="접기">⌃</button>
+            </header>
+            <div class="tool-name">
+              <span class="dot"></span>
+              <strong>bridge_chat_turn</strong>
+            </div>
+            <div class="tool-tabs">
+              <span>Request</span>
+              <strong>Response</strong>
+            </div>
+            <pre id="initialToolResponse"></pre>
+          </article>
+        </section>
+
+        <footer class="composer">
+          <div class="mode-row" role="tablist" aria-label="번역 방향">
+            <button class="mode-button active" type="button" data-mode="incoming">받은 메시지 번역</button>
+            <button class="mode-button" type="button" data-mode="outgoing">보낼 메시지 준비</button>
+          </div>
+          <div class="quick-row">
+            <button id="quickIncoming" type="button" data-mode="incoming" data-prompt="明日、何時に会える？">일본어 받기</button>
+            <button id="quickOutgoing" type="button" data-mode="outgoing" data-prompt="안녕하세요 잘지내셨나요?">한국어 보내기</button>
+            <button id="quickAppointment" type="button" data-mode="outgoing" data-prompt="저녁 7시에 어때?">약속 번역</button>
+          </div>
+          <div class="image-import">
+            <label class="image-upload-button" for="imageInput">
+              <span class="image-icon" aria-hidden="true"></span>
+              <span>대화 이미지 번역</span>
+              <input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp" />
+            </label>
+            <span id="imageStatus" class="image-status">이미지를 선택하면 자동 분석</span>
+          </div>
+          <div id="imagePreview" class="image-preview" hidden>
+            <img id="imagePreviewImage" alt="선택한 대화 이미지 미리보기" />
+            <button id="clearImage" type="button" aria-label="이미지 선택 취소">×</button>
+          </div>
+          <label class="provider-row">
+            <span>맞춤법 엔진</span>
+            <select id="provider">
+              <option value="rules">규칙 엔진</option>
+              <option value="local-gec">로컬 모델</option>
+              <option value="hybrid">하이브리드</option>
+            </select>
+          </label>
+          <div id="livePreview" class="live-preview" hidden>
+            <div class="preview-label"><span>번역 미리보기</span><span id="previewLanguage">일본어</span></div>
+            <strong id="previewText"></strong>
+            <small id="previewMeta"></small>
+          </div>
+          <div class="input-row">
+            <textarea id="prompt" rows="2" maxlength="2000" placeholder="상대방 메시지를 붙여넣거나 보낼 문장을 입력하세요"></textarea>
+            <button id="send" class="send" type="button" aria-label="전송">➤</button>
+          </div>
+          <p id="providerHint" class="provider-hint"></p>
+        </footer>
+      </section>
+
+      <aside class="note-panel">
+        <div class="eyebrow">TALKBRIDGE</div>
+        <h1>대화의 방향까지 읽는 번역</h1>
+        <p>왼쪽 상대방 말풍선은 내 언어로, 오른쪽 내 말풍선은 교정 후 상대 언어로 이어집니다.</p>
+        <dl>
+          <div>
+            <dt>통합 tool</dt>
+            <dd>translate_chat_transcript</dd>
+          </div>
+          <div>
+            <dt>기본 처리</dt>
+            <dd>로컬 OCR · Argos 번역</dd>
+          </div>
+          <div>
+            <dt>대화 보관</dt>
+            <dd>이미지·원문 저장 안 함</dd>
+          </div>
+        </dl>
+        <p class="note-small">PlayMCP에서는 추출된 발화 배열을 빠르게 처리하고, 데모의 이미지 OCR은 같은 좌·우 메시지 모델로 연결됩니다.</p>
+      </aside>
+    </main>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

@@ -1,0 +1,15 @@
+node_modules/
+dist/
+coverage/
+screenshots/
+artifacts/
+.env
+.env.local
+.env.*.local
+.venv/
+.pytest_cache/
+.ocr-cache*/
+.cache/
+*.traineddata
+.DS_Store
+npm-debug.log*
