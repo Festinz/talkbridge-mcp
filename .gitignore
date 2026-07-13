@@ -8,8 +8,11 @@ artifacts/
 .env.*.local
 .venv/
 .pytest_cache/
+__pycache__/
+*.pyc
 .ocr-cache*/
 .cache/
+.argos-downloads/
 *.traineddata
 .DS_Store
 npm-debug.log*

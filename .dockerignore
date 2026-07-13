@@ -4,6 +4,7 @@ coverage
 artifacts
 .ocr-cache*
 .cache
+.argos-downloads
 .venv
 *.traineddata
 .git
