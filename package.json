@@ -11,7 +11,8 @@
     "build": "npm run clean --silent && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "smoke:mcp": "node scripts/smoke-mcp.mjs"
   },
   "keywords": [],
   "author": "",
