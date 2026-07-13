@@ -254,6 +254,8 @@ function normalizeTranslationText(text: string) {
     .trim()
     .toLowerCase()
     .replace(/\s+/g, " ")
+    .replace(/(\d)\s+(시|분|초|개|명|번)/g, "$1$2")
+    .replace(/(시|분|초)\s+(에|쯤|까지|부터)/g, "$1$2")
     .replace(/(?<=[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}])\s+(?=[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}])/gu, "")
     .replace(/([、。！？?!,.])\s+(?=[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}])/gu, "$1")
     .replace(/\s+([、?!,.。！？])/g, "$1");
