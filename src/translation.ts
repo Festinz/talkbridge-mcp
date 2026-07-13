@@ -107,6 +107,13 @@ const LANGUAGE_HINTS: Array<{ language: LanguageCode; pattern: RegExp }> = [
   { language: "en", pattern: /\b(hello|hi|thanks|tomorrow|where|when|what|how|friend|see you|let's|i am)\b/iu }
 ];
 
+const ENGLISH_FUNCTION_WORDS = new Set([
+  "i", "you", "your", "we", "our", "they", "their",
+  "the", "this", "that", "these", "those",
+  "is", "are", "have", "has", "can", "could", "would", "should", "will",
+  "please", "send", "meet", "with", "from", "about", "after", "before"
+]);
+
 export function normalizeLanguage(value: unknown, fallback: LanguageCode = "auto"): LanguageCode {
   return normalizeLanguageCode(value, fallback);
 }
@@ -121,6 +128,10 @@ export function detectLanguage(text: string): { language: LanguageCode; confiden
     if (hint.pattern.test(normalized)) return { language: hint.language, confidence: 0.92 };
   }
 
+  if (/^[\x00-\x7F]+$/.test(normalized) && englishFunctionWordScore(normalized) >= 2) {
+    return { language: "en", confidence: 0.9 };
+  }
+
   const francCode = franc(normalized, { minLength: 3 });
   const detected = francCodeToLanguage(francCode);
   if (detected !== "unknown") {
@@ -130,6 +141,11 @@ export function detectLanguage(text: string): { language: LanguageCode; confiden
     return { language: "en", confidence: 0.55 };
   }
   return { language: "unknown", confidence: 0.2 };
+}
+
+function englishFunctionWordScore(text: string) {
+  const words = text.toLowerCase().match(/[a-z]+(?:'[a-z]+)?/g) ?? [];
+  return words.reduce((score, word) => score + (ENGLISH_FUNCTION_WORDS.has(word) ? 1 : 0), 0);
 }
 
 export class TranslationService {
@@ -350,15 +366,15 @@ function fixtureTranslation(text: string, source: LanguageCode, target: Language
 function localTranslation(text: string, source: LanguageCode, target: LanguageCode): ProviderResult | null {
   const phrase = stripEnding(text);
   if (source === "ja" && target === "ko") {
-    if (/こんにちは/u.test(phrase)) return local("안녕하세요", 0.83);
-    if (/ありがとう/u.test(phrase)) return local("고마워", 0.83);
-    if (/お元気/u.test(phrase)) return local("잘 지내세요?", 0.8);
+    if (/^こんにちは$/u.test(phrase)) return local("안녕하세요", 0.83);
+    if (/^(ありがとう|ありがとうございます)$/u.test(phrase)) return local("고마워", 0.83);
+    if (/^お元気ですか$/u.test(phrase)) return local("잘 지내세요?", 0.8);
   }
   if (source === "en" && target === "ko") {
-    if (/^hi$|^hello$/i.test(phrase)) return local("안녕하세요", 0.83);
-    if (/thank you|thanks/i.test(phrase)) return local("고마워요", 0.83);
+    if (/^(hi|hello)$/i.test(phrase)) return local("안녕하세요", 0.83);
+    if (/^(thank you|thanks)$/i.test(phrase)) return local("고마워요", 0.83);
   }
-  if (source === "zh" && target === "ko" && /你好/u.test(phrase)) return local("안녕하세요", 0.83);
+  if (source === "zh" && target === "ko" && /^(你好|您好)$/u.test(phrase)) return local("안녕하세요", 0.83);
   if (source === "es" && target === "ko" && /^hola$/i.test(phrase)) return local("안녕하세요", 0.83);
   return null;
 }

@@ -45,6 +45,9 @@ describe("TranslationService", () => {
   });
 
   it.each([
+    ["Could you send me the updated schedule after lunch?", "en"],
+    ["Can you help me with this?", "en"],
+    ["das Fahrrad ist da", "de"],
     ["Bonjour, pouvons-nous nous retrouver après la réunion ?", "fr"],
     ["Wir treffen uns morgen vor dem Bahnhof.", "de"],
     ["Завтра я буду немного позже.", "ru"],
@@ -52,6 +55,19 @@ describe("TranslationService", () => {
     ["Tôi sẽ đến sau mười phút nữa.", "vi"]
   ])("detects a broad free-form language sample", (text, expected) => {
     expect(detectLanguage(text).language).toBe(expected);
+  });
+
+  it("does not truncate a longer Chinese message to a greeting", async () => {
+    const service = new TranslationService();
+    const result = await service.translate({
+      text: "你好，我们明天几点见面？",
+      sourceLanguage: "zh",
+      targetLanguage: "ko",
+      mode: "incoming"
+    });
+
+    expect(result.translatedText).not.toBe("안녕하세요");
+    expect(result.provider).not.toBe("local");
   });
 
   it("normalizes language names and labels broad language codes", () => {

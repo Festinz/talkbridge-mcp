@@ -4,6 +4,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 
 const endpoint = process.argv[2] ?? "http://127.0.0.1:3010/mcp";
 const sampleText = process.argv[3] ?? "Could you send me the updated schedule after lunch?";
+const sourceLanguage = process.argv[4] ?? "auto";
 const client = new Client({ name: "talkbridge-smoke-client", version: "1.0.0" });
 const transport = new StreamableHTTPClientTransport(new URL(endpoint));
 
@@ -29,7 +30,7 @@ try {
     arguments: {
       text: sampleText,
       myLanguage: "ko",
-      sourceLanguage: "en"
+      sourceLanguage
     }
   });
   const translateMs = performance.now() - translateStarted;
