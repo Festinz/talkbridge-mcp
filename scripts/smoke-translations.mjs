@@ -65,6 +65,30 @@ const samples = [
     sourceLanguage: "ko",
     targetLanguage: "es",
     mode: "outgoing"
+  },
+  {
+    label: "Japanese multi-clause preservation",
+    text: "ごめん、今日ちょっと遅れそう🥲 先に食べてて！",
+    sourceLanguage: "ja",
+    targetLanguage: "ko",
+    mode: "incoming",
+    mustMatch: /먹/u
+  },
+  {
+    label: "Korean multi-clause preservation",
+    text: "오늘 조금 늦을 것 같아. 미안해, 먼저 먹고 있어!",
+    sourceLanguage: "ko",
+    targetLanguage: "ja",
+    mode: "outgoing",
+    mustMatch: /食/u
+  },
+  {
+    label: "Opaque token preservation",
+    text: "Please review https://example.com/report and reply to @jun by 19:30.",
+    sourceLanguage: "en",
+    targetLanguage: "ko",
+    mode: "incoming",
+    mustInclude: ["https://example.com/report", "@jun", "19:30"]
   }
 ];
 
@@ -84,6 +108,8 @@ try {
       translatedText: result.translatedText
     }, null, 2));
     if (result.fallback || result.translatedText === result.originalText) failed = true;
+    if (sample.mustMatch && !sample.mustMatch.test(result.translatedText)) failed = true;
+    if (sample.mustInclude?.some((token) => !result.translatedText.includes(token))) failed = true;
   }
 } finally {
   stopNllbTranslationWorker();

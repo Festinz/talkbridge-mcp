@@ -7,6 +7,12 @@ from pathlib import Path
 import ctranslate2
 import sentencepiece as spm
 
+from nllb_quality import (
+    prefer_segmented_translation,
+    restore_opaque_tokens,
+    split_chat_clauses,
+)
+
 
 LANGUAGE_CATALOG = json.loads(
     Path(__file__).with_name("nllb_languages.json").read_text(encoding="utf-8")
@@ -65,6 +71,31 @@ def ensure_model():
     return translator, sentencepiece
 
 
+def translate_texts(model, tokenizer, texts, source_tag, target_tag):
+    source_tokens = [
+        [source_tag, *tokenizer.encode(text, out_type=str), "</s>"]
+        for text in texts
+    ]
+    results = model.translate_batch(
+        source_tokens,
+        target_prefix=[[target_tag] for _ in texts],
+        beam_size=int(os.environ.get("CHATPOLISH_NLLB_BEAM_SIZE", "4")),
+        max_decoding_length=int(os.environ.get("CHATPOLISH_NLLB_MAX_DECODING_LENGTH", "256")),
+        repetition_penalty=1.1,
+    )
+
+    translated_texts = []
+    for source_text, result in zip(texts, results):
+        output_tokens = list(result.hypotheses[0])
+        if output_tokens and output_tokens[0] == target_tag:
+            output_tokens = output_tokens[1:]
+        translated = tokenizer.decode(output_tokens).strip()
+        if not translated:
+            raise RuntimeError("NLLB returned an empty translation.")
+        translated_texts.append(restore_opaque_tokens(source_text, translated))
+    return translated_texts
+
+
 def translate(text, source, target):
     source_tag = resolve_language_tag(source)
     target_tag = resolve_language_tag(target)
@@ -72,20 +103,14 @@ def translate(text, source, target):
         raise ValueError(f"Unsupported NLLB language route: {source}-{target}")
 
     model, tokenizer = ensure_model()
-    source_tokens = [source_tag, *tokenizer.encode(text, out_type=str), "</s>"]
-    result = model.translate_batch(
-        [source_tokens],
-        target_prefix=[[target_tag]],
-        beam_size=int(os.environ.get("CHATPOLISH_NLLB_BEAM_SIZE", "2")),
-        max_decoding_length=int(os.environ.get("CHATPOLISH_NLLB_MAX_DECODING_LENGTH", "256")),
-        repetition_penalty=1.1,
-    )[0]
-    output_tokens = list(result.hypotheses[0])
-    if output_tokens and output_tokens[0] == target_tag:
-        output_tokens = output_tokens[1:]
-    translated = tokenizer.decode(output_tokens).strip()
-    if not translated:
-        raise RuntimeError("NLLB returned an empty translation.")
+    translated = translate_texts(model, tokenizer, [text], source_tag, target_tag)[0]
+
+    clauses = split_chat_clauses(text)
+    if len(clauses) > 1:
+        clause_translations = translate_texts(model, tokenizer, clauses, source_tag, target_tag)
+        if prefer_segmented_translation(text, translated, clause_translations):
+            translated = " ".join(clause_translations)
+
     return translated, source_tag, target_tag
 
 

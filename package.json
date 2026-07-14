@@ -11,6 +11,7 @@
     "build": "npm run clean --silent && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:nllb-quality": "python tests/test_nllb_quality.py",
     "test:watch": "vitest",
     "smoke:mcp": "node scripts/smoke-mcp.mjs",
     "smoke:translations": "node scripts/smoke-translations.mjs"
