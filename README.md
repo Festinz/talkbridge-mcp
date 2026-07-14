@@ -80,3 +80,33 @@ flowchart LR
 - [본선 Kakao Tools 확장](docs/kakao-tools-phase.md)
 
 애플리케이션 코드는 MIT License입니다. 번들 가능한 NLLB 모델은 별도의 CC-BY-NC 4.0 조건을 따릅니다. 자세한 내용은 [MODEL_LICENSES.md](MODEL_LICENSES.md)를 확인하세요.
+
+## 팀 시나브로
+
+시나브로는 일상에서 자연스럽게 사용할 수 있는 Agentic AI 서비스를 만드는 2인 개발팀입니다.
+
+| 역할 | 이름 | GitHub | 담당 업무 |
+|---|---|---|---|
+| 팀장 · MCP/백엔드 개발 | 신창준 | [@Festinz](https://github.com/Festinz) | 대화 UX 설계, 번역 엔진 연동, 배포 및 안정성 검증 |
+| 팀원 · UX/테스트/문서화 | 박명환 | [@yuruha0605](https://github.com/yuruha0605) | MCP 서버 설계, 다국어 테스트 시나리오 작성, 서비스 문서화 |
+
+## TalkBridge 소개
+
+TalkBridge는 서로 다른 언어를 사용하는 사람들의 메신저 대화를 돕는 양방향 번역 MCP입니다.
+
+받은 메시지의 언어를 자동으로 감지해 사용자의 언어로 번역하고, 사용자가 작성한 답장은 맞춤법과 문장을 교정한 뒤 상대방의 언어로 변환합니다. 대화 캡처 이미지에서 여러 말풍선을 추출하고 좌우 발화자를 구분해 번역하는 기능도 지원합니다.
+
+## 핵심 기능
+
+- 83개 언어 자동 감지 및 번역
+- 받은 메시지를 사용자의 언어로 번역
+- 보낼 메시지의 맞춤법과 문장 교정
+- 교정된 답장을 상대방 언어로 변환
+- 번역 결과의 한국어 역번역 제공
+- 대화 캡처 OCR 및 좌우 말풍선 복원
+- 유료 외부 API 없이 로컬 NLLB 모델로 처리
+
+## 프로젝트 링크
+
+- [PlayMCP에서 TalkBridge 사용하기](https://playmcp.kakao.com/mcp/70038607628431255)
+- [TalkBridge GitHub 저장소](https://github.com/Festinz/talkbridge-mcp)
