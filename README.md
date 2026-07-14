@@ -87,8 +87,8 @@ flowchart LR
 
 | 역할 | 이름 | GitHub | 담당 업무 |
 |---|---|---|---|
-| 팀장 · MCP/백엔드 개발 | 신창준 | [@Festinz](https://github.com/Festinz) | 대화 UX 설계, 번역 엔진 연동, 배포 및 안정성 검증 |
-| 팀원 · UX/테스트/문서화 | 박명환 | [@yuruha0605](https://github.com/yuruha0605) | MCP 서버 설계, 다국어 테스트 시나리오 작성, 서비스 문서화 |
+| 팀장 · UX/백엔드 개발 | 신창준 | [@Festinz](https://github.com/Festinz) | 대화 UX 설계, 번역 엔진 연동, 배포 및 안정성 검증 |
+| 팀원 · MCP/테스트/문서화 | 박명환 | [@yuruha0605](https://github.com/yuruha0605) | MCP 서버 설계, 다국어 테스트 시나리오 작성, 서비스 문서화 |
 
 ## TalkBridge 소개
 
